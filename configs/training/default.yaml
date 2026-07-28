@@ -1,0 +1,45 @@
+# Default Training Configuration
+# Override with: python main.py training=fast_debug
+# Or via CLI: python main.py training.batch_size=64
+
+# === COMMONLY ADJUSTED SETTINGS ===
+# These are the settings you'll most likely want to change
+
+max_epochs: 100
+batch_size: 32
+data_fraction: 1.0              # Fraction of train/val/test data to use per epoch.
+                                 # Must be between 0.0 and 1.0 (1.0 = 100%, 0.1 = 10%).
+                                 # Handy for quick, still-representative runs, e.g.
+                                 # training.data_fraction=0.1 -- see docs/Experiments
+                                 # for how this maps to actual simulation counts.
+
+# === DATALOADER SETTINGS ===
+# How PyTorch loads data during training
+
+dataloader:
+  num_workers: 4              # Parallel data loading processes (adjust based on CPU cores)
+  pin_memory: true            # Speed up GPU transfer (keep true if using GPU)
+  persistent_workers: true    # Keep workers alive between epochs (faster but more memory)
+
+# === HARDWARE SETTINGS ===
+# GPU/CPU configuration
+
+accelerator: auto              # auto, cpu, gpu, tpu (auto = use GPU if available)
+devices: 1                     # Number of GPUs/CPUs to use
+precision: bf16-mixed          # bf16-mixed is recommended by Lightning: same
+                                # dynamic range as fp32 (no loss scaling needed)
+                                # while still speeding up training on modern GPUs.
+                                # See: https://lightning.ai/docs/pytorch/stable/common/precision_basic.html
+                                # Other valid values: 32-true, 16-mixed, 64-true.
+
+# === OPTIMIZATION SETTINGS ===
+# Advanced training techniques
+
+gradient_clip_val: 0.0         # Gradient clipping (0.0 = disabled)
+accumulate_grad_batches: 1     # Gradient accumulation (simulate larger batch_size)
+
+# === REPRODUCIBILITY ===
+# Ensures consistent results across runs
+
+deterministic: true            # Reproducible results (may reduce speed by ~10%)
+benchmark: false               # Disabled when deterministic=true

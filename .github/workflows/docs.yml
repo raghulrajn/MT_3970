@@ -1,0 +1,50 @@
+# Build (and optionally publish) the Sphinx documentation.
+#
+# The build job runs on every push/PR and catches broken docs early.
+# The deploy job publishes to GitHub Pages on pushes to master/main --
+# it requires Pages to be enabled once in the repo settings:
+#   Settings -> Pages -> Source: "GitHub Actions"
+name: Documentation
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install docs dependencies
+        run: uv sync --extra docs
+
+      - name: Build HTML docs
+        run: uv run sphinx-build -M html docs/source docs/_build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/_build/html
+
+  deploy:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

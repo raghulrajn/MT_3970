@@ -1,0 +1,38 @@
+# HSH Dataset Configuration
+# Deep Drawing Dataset for Complex Shapes
+# https://doi.org/10.18419/DARUS-5158
+
+name: hsh
+base_dataset: hsh
+
+# Selected modality (override with: uv run main.py +dataset.modality=mesh)
+modality: pointcloud
+
+# Modalities - different data representations for the same base dataset
+modalities:
+  pointcloud:
+    datamodule_class: src.data.hsh.PointCloudHSH
+    data_dir: ${paths.datasets_root}/hsh/pointcloud
+    description: "3D point cloud features (2048 points per cloud)"
+
+  graph:
+    datamodule_class: src.data.hsh.SurfaceHSH
+    data_dir: ${paths.datasets_root}/hsh/graph
+    description: "PyG Data objects with vertices, faces, edges"
+
+  mesh:
+    datamodule_class: src.data.hsh.SurfaceHSH
+    data_dir: ${paths.datasets_root}/hsh/graph
+    description: "PyG Data objects (same as graph modality)"
+
+# Dataset metadata
+metadata:
+  description: "Deep Drawing Approximation for Complex Shapes"
+  doi: "https://doi.org/10.18419/DARUS-5158"
+  paper: ["https://doi.org/10.1088/1742-6596/3104/1/012061"]
+  num_samples: 2501
+  num_geometries: 228
+  splits:
+    train: ~2000
+    val: ~250
+    test: ~251

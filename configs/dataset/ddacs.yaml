@@ -1,0 +1,46 @@
+# DDACS Dataset Configuration
+# Deep Drawing and Cutting Simulation Dataset
+# https://doi.org/10.18419/DARUS-4801
+
+name: ddacs
+base_dataset: ddacs
+
+# Selected modality (override with: uv run main.py dataset.modality=graph)
+modality: pointcloud
+
+# Modalities - different data representations for the same base dataset
+modalities:
+  pointcloud:
+    datamodule_class: src.data.ddacs.PointCloudDDACS
+    data_dir: ${paths.datasets_root}/ddacs/pointcloud
+    description: "Point clouds of blank/die/punch/binder (.npy export, memmap)"
+
+  image:
+    datamodule_class: src.data.ddacs.ImageDDACS
+    data_dir: ${paths.datasets_root}/ddacs/image
+    description: "Height-map / displacement images (.npy export, memmap)"
+
+  graph:
+    datamodule_class: src.data.ddacs.GraphDDACS
+    data_dir: ${paths.datasets_root}/ddacs/graph
+    description: "Meshes as PyG graphs, one .npz per simulation"
+
+  mesh:
+    datamodule_class: src.data.ddacs.GraphDDACS
+    data_dir: ${paths.datasets_root}/ddacs/graph
+    description: "Alias for the graph modality"
+
+  h5:
+    datamodule_class: src.data.ddacs.StreamingDDACS
+    data_dir: ${paths.datasets_root}/ddacs/h5
+    description: "Streams any view directly from the raw H5 zips (ddacs 3.x)"
+    kwargs:
+      view: graph-blank-tools  # or pointcloud-/image-blank-tools, springback-minimal, ...
+
+# Dataset metadata
+metadata:
+  description: "Deep Drawing and Cutting Simulation Dataset"
+  doi: "https://doi.org/10.18419/DARUS-4801"
+  code: "https://github.com/BaumSebastian/DDACS"
+  paper: ["https://doi.org/10.1051/matecconf/202540801090"]
+  num_samples: 32466

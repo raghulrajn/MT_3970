@@ -1,0 +1,24 @@
+# Fast Debug Training Configuration
+# For quick iteration and testing
+# Usage: python main.py training=fast_debug
+
+# Inherit from default and override specific settings
+defaults:
+  - default
+
+# === QUICK TESTING SETTINGS ===
+max_epochs: 3                  # Just a few epochs for quick feedback
+batch_size: 4                  # Small batch for fast iteration
+limit_train_batches: 50        # Only 50 batches per epoch -- pipeline check, not training
+limit_val_batches: 20
+limit_test_batches: 20
+
+# === DATALOADER SETTINGS ===
+dataloader:
+  num_workers: 0               # No parallel loading (easier debugging, avoids multiprocessing issues)
+  pin_memory: false            # Not needed for quick CPU tests
+  persistent_workers: false    # Not used when num_workers=0
+
+# === OPTIMIZATION SETTINGS ===
+deterministic: false           # Speed over reproducibility for debugging
+benchmark: true                # Enable cuDNN autotuner for speed

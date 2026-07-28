@@ -1,0 +1,120 @@
+name: CI - Code Quality & Tests
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  quality-check:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Cache pip packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .[dev]
+
+    - name: Check code formatting with Black
+      run: |
+        echo "Checking code formatting..."
+        black --check --diff .
+      continue-on-error: true
+
+    - name: Check import sorting with isort
+      run: |
+        echo "Checking import order..."
+        isort --check-only --diff .
+      continue-on-error: true
+
+    - name: Lint with Ruff
+      run: |
+        echo "Linting code..."
+        ruff check .
+      continue-on-error: true
+
+    - name: Validate model config
+      run: |
+        echo "Validating model config has class_path..."
+        python -c "
+        from pathlib import Path
+        from omegaconf import OmegaConf
+
+        model_configs = Path('configs/model').glob('*.yaml')
+
+        for config_file in model_configs:
+            cfg = OmegaConf.load(config_file)
+            assert 'class_path' in cfg, f'{config_file.name} missing class_path field'
+            print(f'[PASS] {config_file.name} has class_path: {cfg.class_path}')
+
+        print('All model configs valid!')
+        "
+
+    - name: Run tests with pytest
+      run: |
+        echo "Running tests..."
+        pytest tests/ -v
+
+
+  model-loading:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+
+    - name: Test model loading from config
+      run: |
+        echo "Testing that models can be loaded from config..."
+        python -c "
+        from pathlib import Path
+        from omegaconf import OmegaConf
+        from src.utils.model_registry import get_model_class
+
+        model_configs = list(Path('configs/model').glob('*.yaml'))
+        print(f'Found {len(model_configs)} model configs')
+
+        for config_file in model_configs:
+            print(f'Testing {config_file.name}...')
+
+            # Load config
+            cfg = OmegaConf.load(config_file)
+            model_name = cfg.name
+
+            # Try to load model class
+            try:
+                model_class = get_model_class(model_name)
+                print(f'  [PASS] {model_name}: Successfully loaded class {model_class.__name__}')
+            except Exception as e:
+                print(f'  [FAIL] {model_name}: Failed to load - {e}')
+                raise
+
+        print('All models can be loaded!')
+        "

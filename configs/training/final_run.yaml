@@ -1,0 +1,25 @@
+# Final Run Training Configuration
+# For production training and final results
+# Usage: python main.py training=final_run
+
+# Inherit from default and override specific settings
+defaults:
+  - default
+
+# === PRODUCTION SETTINGS ===
+max_epochs: 500                # Extended training
+batch_size: 128                # Larger batch size (adjust based on GPU memory)
+
+# === DATALOADER SETTINGS ===
+dataloader:
+  num_workers: 8               # More parallel workers for faster data loading
+  pin_memory: true             # Optimize GPU memory transfer
+  persistent_workers: true     # Keep workers alive for efficiency
+
+# === OPTIMIZATION SETTINGS ===
+gradient_clip_val: 1.0         # Prevent exploding gradients
+# precision inherited from default.yaml (bf16-mixed)
+
+# === REPRODUCIBILITY ===
+deterministic: true            # Ensure reproducible results for final submission
+benchmark: false               # Disabled for deterministic behavior

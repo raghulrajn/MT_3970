@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Supervisor files (admin only, not for students)
+.supervisor/
+
+# Data
+data/datasets/
+data/raw/
+data/processed/
+*.h5
+
+# MlFlow
+mlruns/**/
+mlruns/mlflow.db
+
+# Evaluation results
+experiments/
+outputs/
+
+# IDEs
+.vscode/
+.idea/
+
+# Sphinx build output
+docs/_build/
+
+# OS
+.DS_Store
+
+# Claude Code local session files
+.claude/

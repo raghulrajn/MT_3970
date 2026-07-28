@@ -1,0 +1,87 @@
+# Main configuration file
+# Override with: uv run main.py model=your_model dataset=your_dataset +dataset.modality=h5
+
+defaults:
+  - model: dummy
+  - dataset: ddacs
+  - training: fast_debug
+  - _self_
+
+# Student information - CHANGE THESE VALUES BEFORE YOUR FIRST RUN!
+student_name: "CHANGE_ME"  # Your full name (e.g., "Max Mustermann")
+student_id: "CHANGE_ME"    # Your student ID (e.g., "st123456")
+work_type: "CHANGE_ME"     # BT (Bachelor), MT (Master), RT (Research Project)
+thesis_number: "CHANGE_ME" # Your thesis number from your supervisor (e.g., "2024_042")
+# Computed thesis_id: ${work_type}_${thesis_number} (e.g., "MT_2024_042")
+
+# Project paths
+paths:
+  # Local workspace
+  root_dir: ${hydra:runtime.cwd}
+  experiments_dir: ${paths.root_dir}/experiments
+
+  # Centralized storage (on server: /mnt/data)
+  # Override with environment variable: DATA_DIR=/mnt/data
+  base_data_dir: ${oc.env:DATA_DIR,/mnt/data}
+  datasets_root: ${paths.base_data_dir}/datasets
+  models_root: ${paths.base_data_dir}/models
+
+# Submission identifier (used for experiment naming)
+submission:
+  # Computed: MT_2024_042_mlp_ddacs
+  submission_id: ${work_type}_${thesis_number}_${model.name}_${dataset.name}
+
+# Logging (directories derived by ConfigManager from Hydra's run.dir)
+logging:
+  log_every_n_steps: 10
+  # Experiment name = thesis identifier (groups all runs for this thesis)
+  experiment_name: ${work_type}_${thesis_number}
+
+# Checkpointing (directory derived by ConfigManager from Hydra's run.dir)
+checkpoint:
+  save_top_k: 3
+  monitor: val/loss
+  mode: min
+  save_last: true
+  filename: epoch={epoch:02d}-val_loss={val/loss:.4f}
+
+# Early stopping
+early_stopping:
+  enabled: true
+  monitor: val/loss
+  mode: min
+  patience: 15
+  min_delta: 0.0001
+
+# Reproducibility
+seed: 42
+
+# MLflow configuration (single source of truth for experiment tracking)
+mlflow:
+  tracking_uri: ./mlruns
+  register_model: false  # Set to true only for final submission
+
+# Evaluation configuration
+evaluation:
+  num_seeds: 1  # Number of random seeds for evaluation (set >1 for statistical analysis)
+  compute_statistics: true  # Compute mean/std when num_seeds > 1
+  statistical_tests: true  # Run significance tests when num_seeds > 1
+
+# Hydra configuration
+# Hydra outputs go to /tmp and are ignored - MLflow is the single source of truth
+hydra:
+  run:
+    dir: /tmp/${oc.env:USER,student}/hydra/runs/${now:%Y%m%d_%H%M%S}_${model.name}_${dataset.name}
+  sweep:
+    dir: /tmp/${oc.env:USER,student}/hydra/multirun
+    subdir: ${hydra.job.num}
+
+  job:
+    chdir: false
+
+  output_subdir: null
+
+  job_logging:
+    formatters:
+      simple:
+        format: '[%(asctime)s][%(levelname)s] %(name)s: %(message)s'
