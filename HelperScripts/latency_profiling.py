@@ -15,83 +15,29 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.profiler
-import yaml
 from torch.utils.data import DataLoader, Subset
+
+from utils import (
+    ARTIFACT_DIR,
+    DATA_ROOT,
+    get_device,
+    load_compiled_model,
+    load_eager_model,
+    load_scripted_model,
+    prepare_inputs,
+)
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from src.data.ddacs import PointCloudDDACSDataset
-from src.models.model import Model_ContactAware
 
-torch.set_float32_matmul_precision("high")
-
-DATA_ROOT = "/mnt/ac142464/data/datasets/ddacs"
-MODEL_CONFIG = ROOT_DIR / "configs/model/model.yaml"
-ARTIFACT_DIR = ROOT_DIR / "ModelArtifacts"
 TRACE_DIR = ARTIFACT_DIR / "traces"
 
 NUM_FILES = 10
 RUNS_PER_FILE = 10
 WARMUP_RUNS = 20
-
-
-def load_yaml(path: Path) -> dict:
-    """Load a YAML file into a dict.
-
-    Args:
-        path: Path to the YAML file.
-
-    Returns:
-        Parsed YAML contents.
-    """
-    with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
-
-
-def load_eager_model(device: torch.device) -> torch.nn.Module:
-    """Build Model_ContactAware from MODEL_CONFIG and load eager.ckpt.
-
-    Args:
-        device: Device to move the model to before loading weights.
-
-    Returns:
-        The model in eval mode with weights restored from
-        ``ARTIFACT_DIR / "eager.ckpt"``.
-    """
-    config = load_yaml(MODEL_CONFIG)
-    model = Model_ContactAware(config).to(device).eval()
-    ckpt = torch.load(ARTIFACT_DIR / "eager.ckpt", map_location=device, weights_only=False)
-    model.load_state_dict(ckpt.get("state_dict", ckpt))
-    return model
-
-
-def load_scripted_model(path: Path, device: torch.device) -> torch.nn.Module:
-    """Load a TorchScript module from disk.
-
-    Args:
-        path: Path to a ``torch.jit.save``d module.
-        device: Device to map the module's tensors onto.
-
-    Returns:
-        The scripted module in eval mode.
-    """
-    return torch.jit.load(str(path), map_location=device).eval()
-
-def load_compiled_model(path: Path, device: torch.device) -> torch.nn.Module:
-    """Load a torch.compile'd model saved via ``torch.save`` (compile.py).
-
-    Args:
-        path: Path to the pickled model object.
-        device: Device to map the model's tensors onto.
-
-    Returns:
-        The compiled model in eval mode.
-    """
-    model = torch.load(path, map_location=device, weights_only=False)
-    return model.eval()
-
 
 # label -> (artifact path, loader taking (path, device))
 MODEL_ARTIFACTS = {
@@ -101,46 +47,6 @@ MODEL_ARTIFACTS = {
     "reduced_overhead": (ARTIFACT_DIR / "model_reduced_overhead.pt", load_compiled_model),
     "max_autotune":     (ARTIFACT_DIR / "model_max_autotune.pt",     load_compiled_model),
 }
-
-
-def to_device(batch: dict, device: torch.device) -> dict:
-    """Move every tensor value in a batch dict to ``device``, leaving other values untouched.
-
-    Args:
-        batch: Batch dict as yielded by the DataLoader.
-        device: Target device.
-
-    Returns:
-        New dict with tensor values moved to ``device``.
-    """
-    return {k: (v.to(device) if torch.is_tensor(v) else v) for k, v in batch.items()}
-
-
-def prepare_inputs(batch: dict, device: torch.device):
-    """Model-agnostic input prep, mirroring Model_ContactAware.preprocess_data.
-
-    Kept independent of the model instance so it works the same way for the
-    eager, TorchScript-eager, and torch.compile'd model objects.
-
-    Args:
-        batch: Raw batch dict with "blank", "die", "punch", "binder", and
-            "parameters" tensors, as yielded by the DataLoader.
-        device: Device to move the batch to before slicing.
-
-    Returns:
-        Tuple of contiguous tensors ``(blank0, die1, punch1, binder1, die2,
-        punch2, binder2, parameters)`` ready to pass to the model.
-    """
-    batch = to_device(batch, device)
-    blank, die, punch, binder = batch["blank"], batch["die"], batch["punch"], batch["binder"]
-    blank0 = blank[:, 0].contiguous()
-    inputs = (
-        blank0,
-        die[:, 1].contiguous(), punch[:, 1].contiguous(), binder[:, 1].contiguous(),
-        die[:, 2].contiguous(), punch[:, 2].contiguous(), binder[:, 2].contiguous(),
-        batch["parameters"].contiguous(),
-    )
-    return inputs
 
 
 def print_latency_stats(name: str, latencies_ms: list) -> dict:
@@ -237,9 +143,7 @@ def profile_model(name: str, model: torch.nn.Module, loader: DataLoader, device:
 
 
 if __name__ == "__main__":
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if device.type != "cuda":
-        raise RuntimeError("CUDA required for CUDA-event based latency profiling")
+    device = get_device(require_cuda=True)
     print(f"Device: {device}")
 
     dataset = PointCloudDDACSDataset(DATA_ROOT, split="test")
