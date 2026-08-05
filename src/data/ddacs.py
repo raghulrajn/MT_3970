@@ -27,7 +27,7 @@ Train/val/test splits come from the ``split`` column of
 import logging
 from functools import partial
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -42,10 +42,18 @@ logger = logging.getLogger(__name__)
 
 #: Numeric process parameters (columns of process_parameters.csv) that make up
 #: the ``parameters`` tensor of every sample, in this order.
+# PARAM_COLUMNS = [
+#     "curvature_radius",
+#     "bottom_radius",
+#     "wall_angle",
+#     "material_scaling_factor",
+#     "sheet_metal_thickness",
+#     "friction_coefficient",
+#     "blankholder_force",
+# ]
+
 PARAM_COLUMNS = [
     "curvature_radius",
-    "bottom_radius",
-    "wall_angle",
     "material_scaling_factor",
     "sheet_metal_thickness",
     "friction_coefficient",
@@ -86,6 +94,7 @@ def load_process_parameters(root: Path) -> pd.DataFrame:
         FileNotFoundError: If the CSV is missing under root.
     """
     csv_path = Path(root) / "process_parameters.csv"
+    # csv_path = Path("/home/RUS_CIP/st189432/master-thesis-template-master/process_parameters_1.csv")
     if not csv_path.exists():
         raise FileNotFoundError(
             f"process_parameters.csv not found under {root}. "
@@ -151,17 +160,27 @@ class ExportDDACSDataset(Dataset):
         self.export = load_export(export_dir, fields=fields)
         self.sim_ids = np.load(export_dir / "sim_ids.npy")
 
-        splits = np.load(export_dir / "split.npy")
-        self.indices = (
-            np.nonzero(splits == split)[0]
-            if split is not None
-            else np.arange(len(self.export))
-        )
-
         params = load_process_parameters(self.root)
-        self._parameters = torch.from_numpy(
-            params.loc[self.sim_ids, PARAM_COLUMNS].to_numpy(dtype=np.float32)
-        )
+        params = params[~params.index.duplicated(keep="first")]
+
+        # Keep only simulations explicitly present in process_parameters.csv.
+        # This allows using a reduced testing CSV (subset of sim ids) without
+        # iterating over unrelated export records.
+        keep_mask = np.isin(self.sim_ids, params.index.to_numpy())
+
+        if split is not None:
+            if "split" in params.columns:
+                split_ids = params.index[params["split"] == split].to_numpy()
+                keep_mask &= np.isin(self.sim_ids, split_ids)
+            else:
+                splits = np.load(export_dir / "split.npy")
+                keep_mask &= splits == split
+
+        self.indices = np.nonzero(keep_mask)[0]
+        self._selected_sim_ids = self.sim_ids[self.indices]
+
+        param_subset = params.reindex(index=self._selected_sim_ids)[PARAM_COLUMNS]
+        self._parameters = torch.from_numpy(param_subset.to_numpy(dtype=np.float32))
 
         logger.info(
             f"{type(self).__name__}: {len(self.indices)} samples "
@@ -172,12 +191,16 @@ class ExportDDACSDataset(Dataset):
         """Return the number of samples in the selected split."""
         return len(self.indices)
 
-    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
         """Return one sample as a dict of tensors + parameters + sim_id."""
         pos = int(self.indices[idx])
-        sample = _record_to_tensors(self.export[pos])
-        sample["parameters"] = self._parameters[pos]
-        sample["sim_id"] = int(self.sim_ids[pos])
+        sample: Dict[str, Any] = _record_to_tensors(self.export[pos])
+        sample["parameters"] = self._parameters[idx]
+        PARAM_MIN = torch.tensor([30.0, 0.9, 0.05, 0.95, 100000.0], dtype=torch.float32)
+        PARAM_MAX = torch.tensor([150.0, 1.1, 0.15, 1.00, 500000.0], dtype=torch.float32
+        )
+        sample["parameters"] = (sample["parameters"] - PARAM_MIN) / (PARAM_MAX - PARAM_MIN)
+        sample["sim_id"] = int(self._selected_sim_ids[idx])
         if self.transform:
             sample = self.transform(sample)
         return sample
@@ -187,7 +210,7 @@ class PointCloudDDACSDataset(ExportDDACSDataset):
     """Point clouds of blank/die/punch/binder with stress/strain/thickness."""
 
     def __init__(self, root: str, split: Optional[str] = None, **kwargs):
-        super().__init__(root, "pointcloud", split=split, **kwargs)
+        super().__init__(root, "pointcloud", split=split, fields=["blank", "die", "punch", "binder"], **kwargs)
 
 
 class ImageDDACSDataset(ExportDDACSDataset):
