@@ -1,0 +1,130 @@
+name: model_contact_aware
+class_path: src.models.model.Model_ContactAware
+description: >
+  Sequential geometry-aware forming surrogate with per-blank-point
+  contact-aware tool cross-attention (LocalToolEncoder + scalar distance-bias
+  MLP), FiLM process-parameter conditioning with LayerNorm + Dropout, and
+  per-stage intermediate supervision.
+  blank0 -> blank1 -> blank2 -> blank3 (springback).
+application: springback_prediction
+
+architecture:
+  # --- Input dimensionalities -----------------------------------------------
+  blank_input_dim: 3          # XYZ only (no stress/strain features used)
+  tool_input_dim: 3           # tool points are XYZ only
+
+  # --- Process parameter encoder (FiLMGenerator) ----------------------------
+  # param_dim: raw process-parameter scalars fed to FiLMGenerator.
+  param_dim: 5
+
+  # param_hidden_dim: hidden width of FiLMGenerator (2 hidden layers + LN + DO).
+  #   128 is sufficient for 5 scalars.
+  param_hidden_dim: 128
+
+  # film_dropout: dropout probability inside FiLMGenerator hidden layers.
+  #   0.10 — light regularisation (recommended baseline).
+  #   0.20 — increase if val param-MAE diverges while train MAE drops.
+  film_dropout: 0.10
+
+  # --- Tool local encoder (LocalToolEncoder) --------------------------------
+  # tool_embed_dim: per-point feature width for both LocalToolEncoder output
+  #   and ContactAwareToolAttention Q/K/V projections.
+  #   32 — baseline, fits B=8 on 24 GB.
+  #   64 — richer geometry encoding; fits B=4 on 24 GB (recommended).
+  tool_embed_dim: 64
+
+  # k_tool: KNN neighbourhood size for tool-internal EdgeConv graph.
+  #   16 is safe for Md=2048 and Mp=2048.
+  k_tool: 32
+
+  # --- Contact-aware cross-attention (ContactAwareToolAttention) ------------
+  # K_cross: nearest tool points each blank point attends to.
+  K_cross: 32
+
+  # dist_hidden: hidden width of the scalar distance-bias MLP.
+  #   Peak cross-attention intermediate = B * N * K_cross * dist_hidden * 4 B.
+  #   At B=4, N=4096, K_cross=16, dist_hidden=16 -> 16.8 MB
+  dist_hidden: 16
+
+  # --- DGCNN backbone -------------------------------------------------------
+  # knn_k: KNN neighbourhood for blank-point EdgeConv (feature-space, dynamic).
+  #   Canonical DGCNN default is 20 (Wang et al. ACM TOG 2019, arXiv:1801.07829).
+  knn_k: 10
+  k_growth: [1, 2, 3]          # → K = 10, 20, 30
+  hidden_dims: [128, 128, 128]
+  hidden_dims_stage2: [128, 128, 256]   # wider ec3 for harder stage2
+  fuse_dim: 256
+  residual: true
+
+  # dropout_p: dropout after the DGCNN fuse-MLP ReLU.
+  #   Regularises backbone independently of the FiLM generator dropout.
+  #   0.3 — moderate; reduce to 0.1 if training loss converges slowly.
+  dropout_p: 0.3
+
+  # knn_chunk_size: row-block size for chunked (B, N, N) distance computation.
+  #   1024 — each chunk is B*1024*N*4 B = 0.27 GB at B=4, N=4096.
+  knn_chunk_size: 1024
+  use_checkpoint: false
+
+optimizer:
+  name: adamw
+  learning_rate: 0.001
+  weight_decay: 0.0001       # L2 regularisation (raised from 0.0 in model3_wo_geo)
+  betas: [0.9, 0.999]
+
+scheduler:
+  enabled: false
+  name: reduce_on_plateau
+  factor: 0.5
+  patience: 20
+  min_lr: 0.00001
+
+metrics:
+  - mse
+  - rmse
+  - mae
+
+# Scheduled sampling: per-sample Bernoulli mask (Bengio et al., NeurIPS 2015,
+scheduled_sampling:
+  ramp_epochs: 8
+  detach_pred: true
+  start_alpha: 1.0
+  end_alpha: 0.0
+
+# Noise injection on GT blank inputs during the scheduled-sampling ramp.
+noise_injection:
+  ramp_epochs: 8
+  std_start: 0.005
+  std_end: 0.0
+
+# ============================================================
+# Loss weights
+# ============================================================
+#
+# All MSE losses are on 3D coordinates in millimetres (mm).
+#   delta_01 (forming stage 1) : sigma = 0.0507 mm -> sigma^2 ~ 2.57e-3
+#   delta_12 (forming stage 2) : sigma = 0.0461 mm -> sigma^2 ~ 2.13e-3
+#   delta_23 (springback)      : sigma = 0.0014 mm -> sigma^2 ~ 2.0e-6
+
+loss_weights:
+  # --- Blank position losses ---
+  w_blank1: 0.4          
+  w_blank2: 0.5          
+  w_blank3: 500.0        
+                         
+
+  # --- Delta displacement losses ---
+  w_d01:  0.1            # unchanged — auxiliary forming stage 1 signal
+  w_d12:  0.1            # unchanged — auxiliary forming stage 2 signal
+  w_d23:  500.0          # matches w_blank3 scale; replaces old w_d23=50
+                         # with correct normalised-space calibration
+
+  # --- Focal-MSE ---
+  focal_gamma: 1.0       # unitless; upweights hard corner/edge points by 2x
+
+  # --- Laplacian smoothness (NEW in V3) ---
+  w_lap_stage1: 10.0     # forming stage 1 delta smoothness
+  w_lap_stage2: 10.0     # forming stage 2 delta smoothness
+  w_lap:        20000.0  # springback delta smoothness — field is 36x smaller
+                         # so lap is ~1300x smaller; needs proportional scaling
+  lap_k: 12
