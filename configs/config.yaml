@@ -8,10 +8,10 @@ defaults:
   - _self_
 
 # Student information - CHANGE THESE VALUES BEFORE YOUR FIRST RUN!
-student_name: "CHANGE_ME"  # Your full name (e.g., "Max Mustermann")
-student_id: "CHANGE_ME"    # Your student ID (e.g., "st123456")
-work_type: "CHANGE_ME"     # BT (Bachelor), MT (Master), RT (Research Project)
-thesis_number: "CHANGE_ME" # Your thesis number from your supervisor (e.g., "2024_042")
+student_name: "Raghul Raj Navaneethakrishnan"  # Your full name (e.g., "Max Mustermann")
+student_id: "3703553"    # Your student ID (e.g., "st123456")
+work_type: "MT"     # BT (Bachelor), MT (Master), RT (Research Project)
+thesis_number: "3970" # Your thesis number from your supervisor (e.g., "2024_042")
 # Computed thesis_id: ${work_type}_${thesis_number} (e.g., "MT_2024_042")
 
 # Project paths
