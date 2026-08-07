@@ -7,7 +7,7 @@
 
 max_epochs: 100
 batch_size: 32
-data_fraction: 1.0              # Fraction of train/val/test data to use per epoch.
+data_fraction: 1              # Fraction of train/val/test data to use per epoch.
                                  # Must be between 0.0 and 1.0 (1.0 = 100%, 0.1 = 10%).
                                  # Handy for quick, still-representative runs, e.g.
                                  # training.data_fraction=0.1 -- see docs/Experiments
