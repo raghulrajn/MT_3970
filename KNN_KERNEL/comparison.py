@@ -4,6 +4,7 @@ import csv
 import time
 import statistics
 import numpy as np
+import cupy as cp
 import torch
 import triton
 import triton.language as tl
@@ -275,7 +276,6 @@ SIZES = {
     "16k": "/home/RUS_CIP/st189432/master-thesis-template-master/KNN_KERNEL/blank/blank_pc_16K.npy",
     "32k": "/home/RUS_CIP/st189432/master-thesis-template-master/KNN_KERNEL/blank/blank_pc_32K.npy",
     "64k": "/home/RUS_CIP/st189432/master-thesis-template-master/KNN_KERNEL/blank/blank_pc_64K.npy",
-    "1M":  "/home/RUS_CIP/st189432/master-thesis-template-master/KNN_KERNEL/blank/blank_pc_1M.npy",
 }
 
 K       = 16
@@ -313,8 +313,9 @@ def cuml_bruteforce_knn(points: torch.Tensor, k: int) -> torch.Tensor:
             n_neighbors=k + 1, algorithm="brute", metric="euclidean",
             output_type="cupy",
         )
-        nn.fit(points[b])
-        _, idx = nn.kneighbors(points[b])   # (N, k+1), includes self at dist 0
+        pts_cp = cp.from_dlpack(points[b].contiguous())
+        nn.fit(pts_cp)
+        _, idx = nn.kneighbors(pts_cp)   # (N, k+1), includes self at dist 0
         idx = torch.from_dlpack(idx)
 
         # drop the self-match (whichever column it landed in) and keep the
