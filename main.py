@@ -152,6 +152,7 @@ def main(cfg: DictConfig) -> None:
                 pytorch_model=best_model,
                 name=model_name,
                 registered_model_name=model_name if register_model else None,
+                serialization_format=mlflow.pytorch.SERIALIZATION_FORMAT_PICKLE,
             )
             log.info(
                 f"Logged model artifact '{model_name}' (registered={register_model})"
