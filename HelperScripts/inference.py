@@ -30,9 +30,15 @@ Usage
 
     # Specific simulation IDs (from process_parameters.csv):
     python HelperScripts/inference.py --sim-ids 1023 4092 77
+
+    # Cross-model comparison: log MAE/P50/P90/P99 per (model, sim_id) to a
+    # CSV in InferenceMetrics/ instead of saving per-sim plots. Every model
+    # sees the same sampled sim_ids for a fair comparison.
+    python HelperScripts/inference.py --compare-models --num-random 20 --seed 0
 """
 
 import argparse
+import csv
 import random
 import sys
 import warnings
@@ -68,6 +74,7 @@ if str(ROOT_DIR) not in sys.path:
 from src.data.ddacs import ExportDDACSDataset
 
 PLOTS_DIR = ROOT_DIR / "PLOTS"
+INFERENCE_METRICS_DIR = ROOT_DIR / "InferenceMetrics"
 
 # model key -> (artifact path, loader(path, device))
 MODEL_ARTIFACTS = {
@@ -256,6 +263,24 @@ def select_sample_indices(
     return rng.sample(range(len(dataset)), k=min(num_random, len(dataset)))
 
 
+def compute_error_percentiles(pred_mm: np.ndarray, gt_mm: np.ndarray) -> Dict[str, float]:
+    """Per-point Euclidean error percentiles (mm), matching _plot_springback's MAE.
+
+    Args:
+        pred_mm: Predicted point cloud in mm, shape (N, 3).
+        gt_mm:   Ground-truth point cloud in mm, shape (N, 3).
+
+    Returns:
+        Dict with keys "p50", "p90", "p99".
+    """
+    err = np.linalg.norm(pred_mm - gt_mm, axis=1)
+    return {
+        "p50": float(np.percentile(err, 50)),
+        "p90": float(np.percentile(err, 90)),
+        "p99": float(np.percentile(err, 99)),
+    }
+
+
 _AXIS_LIMITS: Tuple[float, float] = (-1.0, 1.0)
 
 
@@ -387,6 +412,16 @@ def _parse_args() -> argparse.Namespace:
         help="Number of random test-split files to sample when --sim-ids is not given.",
     )
     p.add_argument("--seed", type=int, default=None, help="Random seed for --num-random sampling.")
+    p.add_argument(
+        "--compare-models", action="store_true",
+        help="Log per-(model, sim_id) MAE/P50/P90/P99 to a CSV in InferenceMetrics/ for "
+             "cross-model comparison, using the same sampled sim_ids for every model. "
+             "Skips per-sim plots.",
+    )
+    p.add_argument(
+        "--csv-name", type=str, default="inference_comparison.csv",
+        help="CSV filename written to InferenceMetrics/ when --compare-models is set.",
+    )
     return p.parse_args()
 
 
@@ -397,6 +432,19 @@ if __name__ == "__main__":
     print(f"Device: {device}")
 
     PLOTS_DIR.mkdir(parents=True, exist_ok=True)
+
+    csv_writer = None
+    csv_file = None
+    csv_path = None
+    if args.compare_models:
+        INFERENCE_METRICS_DIR.mkdir(parents=True, exist_ok=True)
+        csv_path = INFERENCE_METRICS_DIR / args.csv_name
+        csv_file = open(csv_path, "w", newline="")
+        csv_writer = csv.DictWriter(
+            csv_file, fieldnames=["Model", "SIM_ID", "MAE", "MSE", "RMSE", "P50", "P90", "P99"]
+        )
+        csv_writer.writeheader()
+        print(f"Logging comparison metrics to {csv_path}")
 
     test_dataset = ExportDDACSDataset(
         DATA_ROOT, "pointcloud", split="test",
@@ -441,14 +489,33 @@ if __name__ == "__main__":
 
             pred_mm = pred_denorm.squeeze(0).detach().cpu().numpy()
             gt_mm = target_denorm.squeeze(0).detach().cpu().numpy()
-            _set_axis_limits(gt_mm)
-            save_path = PLOTS_DIR / f"{sim_id}_{model_key}.png"
-            _plot_springback(pred_mm, gt_mm, sim_id, model_key, save_path)
-            print(f"  Saved plot -> {save_path}")
+
+            if csv_writer is not None:
+                pct = compute_error_percentiles(pred_mm, gt_mm)
+                csv_writer.writerow({
+                    "Model": model_key,
+                    "SIM_ID": sim_id,
+                    "MAE": metrics["mae"],
+                    "MSE": metrics["mse"],
+                    "RMSE": metrics["rmse"],
+                    "P50": pct["p50"],
+                    "P90": pct["p90"],
+                    "P99": pct["p99"],
+                })
+                csv_file.flush()
+            else:
+                _set_axis_limits(gt_mm)
+                save_path = PLOTS_DIR / f"{sim_id}_{model_key}.png"
+                _plot_springback(pred_mm, gt_mm, sim_id, model_key, save_path)
+                print(f"  Saved plot -> {save_path}")
 
         del model
         if device.type == "cuda":
             torch.cuda.empty_cache()
+
+    if csv_file is not None:
+        csv_file.close()
+        print(f"Comparison metrics saved to {csv_path}")
 
     # ---- Summary table -------------------------------------------------------
     print(f"\n{'=' * 70}")
