@@ -110,6 +110,8 @@ uv run python HelperScripts/inference.py --num-random 5 --seed 0
 
 # Specific simulation IDs (from process_parameters.csv)
 uv run python HelperScripts/inference.py --sim-ids 16039 16040
+
+uv run python inference.py --compare-models --num-random 20 --seed 0
 ```
 
 Runs a single forward pass per (model, sample) pair across every backend found in
