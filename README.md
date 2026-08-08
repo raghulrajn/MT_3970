@@ -141,6 +141,14 @@ BatchSize of 4. complete configuration is mentioned in the configs directory
 | 65,536 | --- | 10.38 ms | 20.23 ms |
 | 1,000,000 | --- | 158.79 ms | 310.89 ms |
 
+### Latency Comparison
+![latency](./Images/Results/latency_comparison.png)
+*The mean inference time across different optimisation stages*
+
+### Accuracy Comparison
+![latency](./Images/Results/inference_metrics_mae.png)
+*The mean MAE comparison across different optimisation stages*
+
 ---
 
 ## Conclusion
